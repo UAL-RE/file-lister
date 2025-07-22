@@ -1,0 +1,605 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Folder Lister</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom styles for better visual feedback */
+        #drop-area {
+            border: 4px dashed #cbd5e0; /* lightgray-400 */
+            border-radius: 1rem; /* rounded-xl */
+            transition: all 0.2s ease-in-out;
+        }
+        #drop-area.highlight {
+            border-color: #3b82f6; /* blue-500 */
+            background-color: #eff6ff; /* blue-50 */
+        }
+        /* Ensure Inter font is used for the whole body */
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        /* Style for the table cells to ensure proper alignment and wrapping */
+        .path-cell {
+            word-break: break-all;
+            white-space: normal; /* Allow text to wrap naturally */
+        }
+        .size-cell {
+            white-space: nowrap; /* Prevent size from wrapping */
+            text-align: right; /* Align size to the right */
+        }
+        /* Highlight for size mismatches */
+        .highlight-size-mismatch {
+            background-color: #fef3c7; /* yellow-100 */
+        }
+        /* Highlight for path mismatches */
+        .highlight-path-mismatch {
+            background-color: #fecaca; /* red-200, slightly darker */
+        }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen flex flex-col items-center justify-center p-4">
+
+    <div class="bg-white p-8 rounded-xl shadow-lg w-full max-w-5xl">
+        <h1 class="text-3xl font-bold text-center text-gray-800 mb-6">Folder Lister</h1>
+
+        <p class="text-sm text-gray-600 ">Generates a file manifest for the given folder. Listing is generated in-browser; no data is transmitted anywhere.</p>
+        <p class="text-sm text-gray-600">Step 1. Drag a folder into the area. All files/folders must be readable, or an error will be generated otherwise.<br>Step 2: Download the results as a CSV file and include it with the folder contents.</p>
+        <p>&nbsp;</p>
+
+        <!-- Drop Area -->
+        <div id="drop-area" class="flex flex-col items-center justify-center p-12 mb-6 cursor-pointer
+                                   bg-gray-50 text-gray-600 hover:bg-gray-100
+                                   transition-colors duration-200 ease-in-out">
+            <svg class="w-16 h-16 mb-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path>
+            </svg>
+            <p class="text-lg font-medium text-center">Drag and drop a folder here</p>
+        </div>
+
+        <!-- Options -->
+        <div class="flex flex-col sm:flex-row items-center justify-center mb-6 space-y-2 sm:space-y-0 sm:space-x-4">
+            <div class="flex items-center">
+                <!-- showFileSizesToggle is checked by default -->
+                <input type="checkbox" id="showFileSizesToggle" class="form-checkbox h-5 w-5 text-blue-600 rounded-md" checked>
+                <label for="showFileSizesToggle" class="ml-2 text-gray-700 select-none">Show File Sizes</label>
+            </div>
+            <!-- Download CSV Button -->
+            <button id="downloadCsvBtn" class="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors shadow-md">
+                Download CSV
+            </button>
+            <!-- New Validate CSV Button -->
+            <button id="validateCsvBtn" class="px-4 py-2 bg-gray-400 text-white rounded-md shadow-md cursor-not-allowed invisible" disabled>
+                Validate CSV
+            </button>
+            <!-- Hidden file input for CSV upload -->
+            <input type="file" id="csvFileInput" accept=".csv" class="hidden">
+        </div>
+
+        <!-- Output Area -->
+        <div class="bg-gray-50 p-6 rounded-lg border border-gray-200 min-h-[200px] overflow-auto w-full">
+            <p id="output-message" class="text-gray-500 text-center mb-4">Drop a folder to see its contents.</p>
+            <table id="output-table" class="min-w-full divide-y divide-gray-200 hidden">
+                <thead class="bg-gray-100">
+                    <tr>
+                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Path
+                        </th>
+                        <th scope="col" id="size-header" class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Size
+                        </th>
+                    </tr>
+                </thead>
+                <tbody id="output-table-body" class="bg-white divide-y divide-gray-200">
+                    <!-- Table rows will be inserted here by JavaScript -->
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Message Box for alerts -->
+        <div id="message-box" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50">
+            <div class="bg-white p-6 rounded-lg shadow-xl max-w-sm w-full text-center">
+                <p id="message-text" class="text-lg font-semibold text-gray-800 mb-4"></p>
+                <button id="message-close-button" class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors">OK</button>
+            </div>
+        </div>
+      <table class="min-w-full text-xs text-gray-300">
+      <tr>
+      <td><p class="text-left"><a href="?validate=1">validate</a></p></td>
+      <td><p class="text-right"><a href="https://github.com/UAL-RE/file-lister">v1.0</a></p></td>
+      </tr>
+      </table>
+      
+    </div>
+
+    <script>
+        const dropArea = document.getElementById('drop-area');
+        const showFileSizesToggle = document.getElementById('showFileSizesToggle');
+        const downloadCsvBtn = document.getElementById('downloadCsvBtn');
+        const validateCsvBtn = document.getElementById('validateCsvBtn');
+        const csvFileInput = document.getElementById('csvFileInput');
+        const outputArea = document.getElementById('output-area');
+        const outputMessage = document.getElementById('output-message');
+        const outputTable = document.getElementById('output-table');
+        const outputTableBody = document.getElementById('output-table-body');
+        const sizeHeader = document.getElementById('size-header');
+        const messageBox = document.getElementById('message-box');
+        const messageText = document.getElementById('message-text');
+        const messageCloseButton = document.getElementById('message-close-button');
+
+        let allFilesAndFolders = [];
+        let rootPath = '';
+        let droppedFolderEntry = null;
+        // Stores validation status: Map<path, 'match' | 'path-mismatch' | 'size-mismatch'>
+        let validationResults = new Map();
+
+        /**
+         * Sets the enabled/disabled state and styling of the Validate CSV button.
+         * @param {boolean} enable True to enable, false to disable.
+         */
+        function setValidateButtonState(enable) {
+            validateCsvBtn.disabled = !enable;
+            if (enable) {
+                validateCsvBtn.classList.remove('bg-gray-400', 'cursor-not-allowed');
+                validateCsvBtn.classList.add('bg-blue-600', 'hover:bg-blue-700');
+            } else {
+                validateCsvBtn.classList.remove('bg-blue-600', 'hover:bg-blue-700');
+                validateCsvBtn.classList.add('bg-gray-400', 'cursor-not-allowed');
+            }
+        }
+
+        /**
+         * Displays a custom message box instead of alert().
+         * @param {string} message The message to display.
+         */
+        function showMessageBox(message) {
+            messageText.textContent = message;
+            messageBox.classList.remove('hidden');
+        }
+
+        // Close message box
+        messageCloseButton.addEventListener('click', () => {
+            messageBox.classList.add('hidden');
+        });
+
+        // Prevent default drag behaviors
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+            dropArea.addEventListener(eventName, preventDefaults, false);
+            document.body.addEventListener(eventName, preventDefaults, false);
+        });
+
+        function preventDefaults(e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+
+        // Highlight drop area when item is dragged over it
+        ['dragenter', 'dragover'].forEach(eventName => {
+            dropArea.addEventListener(eventName, () => dropArea.classList.add('highlight'), false);
+        });
+
+        // Remove highlight when item leaves drop area
+        ['dragleave', 'drop'].forEach(eventName => {
+            dropArea.addEventListener(eventName, () => dropArea.classList.remove('highlight'), false);
+        });
+
+        // Handle dropped items
+        dropArea.addEventListener('drop', handleDrop, false);
+
+        /**
+         * Handles the drop event, processes the dropped items.
+         * @param {DragEvent} e The drop event.
+         */
+        async function handleDrop(e) {
+            outputMessage.textContent = 'Processing folder...';
+            outputTable.classList.add('hidden');
+            outputTableBody.innerHTML = '';
+            allFilesAndFolders = [];
+            rootPath = '';
+            droppedFolderEntry = null;
+            validationResults.clear(); // Clear validation results on new drop
+            setValidateButtonState(false); // Disable validate button initially
+
+            const items = e.dataTransfer.items;
+            if (!items || items.length === 0) {
+                outputMessage.textContent = 'No items dropped.';
+                return;
+            }
+
+            for (let i = 0; i < items.length; i++) {
+                const item = items[i];
+                if (item.webkitGetAsEntry) {
+                    const entry = item.webkitGetAsEntry();
+                    if (entry && entry.isDirectory) {
+                        droppedFolderEntry = entry;
+                        break;
+                    }
+                }
+            }
+
+            if (droppedFolderEntry) {
+                rootPath = droppedFolderEntry.fullPath.endsWith('/') ? droppedFolderEntry.fullPath : droppedFolderEntry.fullPath + '/';
+                outputMessage.textContent = `Listing contents of: ${droppedFolderEntry.name}`;
+
+                const rootFolderTotalSize = await readDirectoryAndCalculateSizes(droppedFolderEntry);
+                allFilesAndFolders.push({ entry: droppedFolderEntry, size: rootFolderTotalSize });
+
+                displayFilesAndFolders();
+                // Enable validate button if there's data to validate
+                if (allFilesAndFolders.length > 0) {
+                    setValidateButtonState(true);
+                } else {
+                    setValidateButtonState(false);
+                }
+            } else {
+                outputMessage.textContent = 'Please drop a single folder. File System Access API (webkitGetAsEntry) not supported or no folder dropped.';
+                showMessageBox('Please drop a single folder. File System Access API (webkitGetAsEntry) is required and may not be supported by your browser, or you did not drop a folder.');
+            }
+        }
+
+        /**
+         * Recursively reads the contents of a directory, calculates sizes, and populates `allFilesAndFolders`.
+         * This function returns the total size of the given directory.
+         * @param {FileSystemDirectoryEntry} directoryEntry The directory entry to read.
+         * @returns {Promise<number>} The total size of the directory (in bytes).
+         */
+        async function readDirectoryAndCalculateSizes(directoryEntry) {
+            let currentDirSize = 0;
+            const reader = directoryEntry.createReader();
+            let entries = [];
+
+            const readAllEntries = () => new Promise(resolve => {
+                reader.readEntries(async (results) => {
+                    if (!results.length) {
+                        resolve(entries);
+                    } else {
+                        entries = entries.concat(Array.from(results));
+                        readAllEntries().then(resolve);
+                    }
+                }, (error) => {
+                    console.error('Error reading directory entries:', error);
+                    showMessageBox(`Error reading entries in ${directoryEntry.name}: ${error.message}`);
+                    resolve([]);
+                });
+            });
+
+            const directChildren = await readAllEntries();
+
+            for (const entry of directChildren) {
+                if (entry.isFile) {
+                    try {
+                        const file = await new Promise((res, rej) => entry.file(res, rej));
+                        const fileSize = file.size;
+                        allFilesAndFolders.push({ entry: entry, size: fileSize });
+                        currentDirSize += fileSize;
+                    } catch (error) {
+                        console.error('Error getting file size for:', entry.fullPath, error);
+                        allFilesAndFolders.push({ entry: entry, size: 0 });
+                    }
+                } else if (entry.isDirectory) {
+                    const subDirSize = await readDirectoryAndCalculateSizes(entry);
+                    allFilesAndFolders.push({ entry: entry, size: subDirSize });
+                    currentDirSize += subDirSize;
+                }
+            }
+            return currentDirSize;
+        }
+
+        /**
+         * Displays the sorted list of files and folders in an HTML table.
+         */
+        function displayFilesAndFolders() {
+            outputTableBody.innerHTML = '';
+            outputMessage.textContent = '';
+
+            if (allFilesAndFolders.length === 0) {
+                outputTable.classList.add('hidden');
+                outputMessage.textContent = 'No files or folders found in the dropped directory.';
+                setValidateButtonState(false); // Disable validate button if no data
+                return;
+            }
+
+            const sortedEntries = [...allFilesAndFolders].sort((a, b) => {
+                return a.entry.fullPath.localeCompare(b.entry.fullPath);
+            });
+
+            const showFileSizes = showFileSizesToggle.checked;
+
+            if (showFileSizes) {
+                sizeHeader.classList.remove('hidden');
+            } else {
+                sizeHeader.classList.add('hidden');
+            }
+
+            sortedEntries.forEach(item => {
+                let path = item.entry.fullPath;
+
+                if (item.entry.isDirectory) {
+                    path = path.endsWith('/') ? path : path + '/';
+                }
+
+                const row = outputTableBody.insertRow();
+                // Apply highlight class based on validation result
+                const validationStatus = validationResults.get(path);
+                if (validationStatus === 'path-mismatch') {
+                    row.classList.add('highlight-path-mismatch');
+                } else if (validationStatus === 'size-mismatch') {
+                    row.classList.add('highlight-size-mismatch');
+                }
+                row.classList.add('hover:bg-gray-50');
+
+
+                const pathCell = row.insertCell();
+                pathCell.classList.add('px-6', 'py-4', 'whitespace-nowrap', 'text-sm', 'font-medium', 'text-gray-900', 'path-cell');
+                pathCell.textContent = path;
+
+                const sizeCell = row.insertCell();
+                sizeCell.classList.add('px-6', 'py-4', 'whitespace-nowrap', 'text-sm', 'text-gray-500', 'size-cell');
+                if (showFileSizes) {
+                    sizeCell.textContent = item.size !== null ? formatBytes(item.size) : 'Error';
+                    sizeCell.classList.remove('hidden');
+                } else {
+                    sizeCell.classList.add('hidden');
+                }
+            });
+
+            outputTable.classList.remove('hidden');
+            outputMessage.textContent = `Contents of: ${droppedFolderEntry ? droppedFolderEntry.name : 'N/A'}`;
+            setValidateButtonState(true); // Enable validate button if data is present
+        }
+
+        /**
+         * Formats a number of bytes into a human-readable string (e.g., KB, MB).
+         * @param {number} bytes The number of bytes.
+         * @param {number} decimals The number of decimal places to include.
+         * @returns {string} The formatted size string.
+         */
+        function formatBytes(bytes, decimals = 2) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const dm = decimals < 0 ? 0 : decimals;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+        }
+
+        /**
+         * Generates and downloads a CSV file from the current table data.
+         */
+        function downloadCsv() {
+            if (allFilesAndFolders.length === 0) {
+                showMessageBox('No data to download. Please drop a folder first.');
+                return;
+            }
+
+            // Always include all three columns in the CSV for consistency with validation
+            let csvContent = "Path,Size,Size (Bytes)\n";
+
+            const sortedEntries = [...allFilesAndFolders].sort((a, b) => {
+                return a.entry.fullPath.localeCompare(b.entry.fullPath);
+            });
+
+            sortedEntries.forEach(item => {
+                let path = item.entry.fullPath;
+                if (item.entry.isDirectory) {
+                    path = path.endsWith('/') ? path : path + '/';
+                }
+                // Escape commas and double quotes in path for CSV
+                path = `"${path.replace(/"/g, '""')}"`;
+
+                const formattedSize = item.size !== null ? formatBytes(item.size) : 'Error';
+                const rawSize = item.size !== null ? item.size.toString() : 'Error';
+                
+                // Escape formatted size and raw size for CSV
+                const escapedFormattedSize = `"${formattedSize.replace(/"/g, '""')}"`;
+                const escapedRawSize = `"${rawSize.replace(/"/g, '""')}"`;
+
+                csvContent += `${path},${escapedFormattedSize},${escapedRawSize}\n`;
+            });
+
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.setAttribute('href', url);
+            link.setAttribute('download', 'folder_listing.csv');
+            link.style.visibility = 'hidden';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+        }
+
+        /**
+         * Handles the upload of a CSV file for validation.
+         * @param {Event} event The change event from the file input.
+         */
+        function handleCsvUpload(event) {
+            const file = event.target.files[0];
+            if (!file) {
+                showMessageBox('No CSV file selected.');
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    const csvText = e.target.result;
+                    validateOutput(csvText);
+                } catch (error) {
+                    console.error('Error reading or parsing CSV:', error);
+                    showMessageBox('Error reading or parsing CSV file. Please ensure it is a valid CSV.');
+                }
+            };
+            reader.onerror = () => {
+                showMessageBox('Failed to read CSV file.');
+            };
+            reader.readAsText(file);
+            csvFileInput.value = ''; // Clear the file input so the same file can be selected again
+        }
+
+        /**
+         * Validates the current folder listing against the uploaded CSV data.
+         * Highlights mismatches in the table.
+         * @param {string} csvText The content of the uploaded CSV file.
+         */
+        function validateOutput(csvText) {
+            validationResults.clear(); // Clear previous validation results
+
+            const lines = csvText.trim().split('\n');
+            if (lines.length < 2) {
+                showMessageBox('CSV file is empty or contains only headers.');
+                displayFilesAndFolders(); // Redraw without highlights
+                return;
+            }
+
+            const csvDataMap = new Map(); // Map<path, { rawSize: string }>
+            const expectedHeaders = ["Path", "Size", "Size (Bytes)"];
+            const headerLine = lines[0];
+            const parsedHeaders = [];
+            let inQuoteHeader = false;
+            let currentHeader = '';
+            for (let k = 0; k < headerLine.length; k++) {
+                const char = headerLine[k];
+                if (char === '"') {
+                    inQuoteHeader = !inQuoteHeader;
+                } else if (char === ',' && !inQuoteHeader) {
+                    parsedHeaders.push(currentHeader.trim());
+                    currentHeader = '';
+                } else {
+                    currentHeader += char;
+                }
+            }
+            parsedHeaders.push(currentHeader.trim());
+
+            // Basic check for expected headers
+            if (parsedHeaders.length !== expectedHeaders.length ||
+                !parsedHeaders.every((val, index) => val === expectedHeaders[index])) {
+                showMessageBox('CSV header format is incorrect. Expected: "Path,Size,Size (Bytes)"');
+                displayFilesAndFolders();
+                return;
+            }
+
+            const pathColIndex = parsedHeaders.indexOf("Path");
+            const rawSizeColIndex = parsedHeaders.indexOf("Size (Bytes)");
+
+            for (let i = 1; i < lines.length; i++) {
+                const line = lines[i];
+                // Use a more robust regex for parsing CSV lines, handling quoted fields and escaped quotes
+                // This regex splits by comma, but not if the comma is inside double quotes.
+                // It also handles escaped double quotes ("") within a quoted field.
+                const columns = line.match(/(".*?"|[^",]+)(?=\s*,|\s*$)/g).map(col => {
+                    // Remove surrounding quotes and unescape internal quotes
+                    if (col.startsWith('"') && col.endsWith('"')) {
+                        return col.substring(1, col.length - 1).replace(/""/g, '"');
+                    }
+                    return col;
+                });
+
+                if (columns.length > rawSizeColIndex && columns[pathColIndex]) {
+                    const path = columns[pathColIndex].trim();
+                    const rawSize = columns[rawSizeColIndex].trim();
+                    csvDataMap.set(path, { rawSize: rawSize });
+                }
+            }
+
+            let inTableButNotInCsv = 0;
+            let inCsvButNotInTable = 0;
+            let sizeMismatches = 0;
+
+            // Compare current data with CSV data
+            allFilesAndFolders.forEach(item => {
+                let currentPath = item.entry.fullPath;
+                if (item.entry.isDirectory) {
+                    currentPath = currentPath.endsWith('/') ? currentPath : currentPath + '/';
+                }
+                const currentRawSize = item.size !== null ? item.size.toString() : 'Error';
+
+                const csvEntry = csvDataMap.get(currentPath);
+
+                if (!csvEntry) {
+                    validationResults.set(currentPath, 'path-mismatch'); // Path not found in CSV
+                    inTableButNotInCsv++;
+                } else if (csvEntry.rawSize !== currentRawSize) {
+                    validationResults.set(currentPath, 'size-mismatch'); // Path found, but size differs
+                    sizeMismatches++;
+                } else {
+                    validationResults.set(currentPath, 'match'); // Both match
+                }
+            });
+
+            // Check for entries in CSV that are not in current folder scan
+            csvDataMap.forEach((csvItem, csvPath) => {
+                let foundInCurrent = false;
+                for (const item of allFilesAndFolders) {
+                    let currentPathFormatted = item.entry.fullPath;
+                    if (item.entry.isDirectory) {
+                        currentPathFormatted = currentPathFormatted.endsWith('/') ? currentPathFormatted : currentPathFormatted + '/';
+                    }
+                    if (currentPathFormatted === csvPath) {
+                        foundInCurrent = true;
+                        break;
+                    }
+                }
+                if (!foundInCurrent) {
+                    inCsvButNotInTable++;
+                }
+            });
+
+            displayFilesAndFolders(); // Re-render the table with highlighting
+
+            const totalMismatches = inTableButNotInCsv + inCsvButNotInTable + sizeMismatches;
+            if (totalMismatches > 0) {
+                let message = `Validation complete: ${totalMismatches} mismatches found.`;
+                if (inTableButNotInCsv > 0) {
+                    message += ` ${inTableButNotInCsv} in table but not in CSV.`;
+                }
+                if (inCsvButNotInTable > 0) {
+                    message += ` ${inCsvButNotInTable} in CSV but not in table.`;
+                }
+                if (sizeMismatches > 0) {
+                    message += ` ${sizeMismatches} size mismatches.`;
+                }
+                message += ` Mismatched entries are highlighted:
+                - Red: Path mismatch (entry in table but not in CSV)
+                - Light Yellow: Size mismatch (path matches, but size differs)`;
+                showMessageBox(message);
+            } else {
+                showMessageBox('Validation complete: All entries match the uploaded CSV!');
+            }
+        }
+        
+        /**
+        * Function to get a specific GET parameter from the URL.
+        * @param {string} name - The name of the GET parameter to retrieve.
+        * @returns {string|null} The value of the parameter, or null if not found.
+        */
+        function getUrlParameter(name) {
+            // Encode the name to handle special characters in the URL
+            name = name.replace(/[\[]/, "\\[").replace(/[\]]/, "\\]");
+            // Create a regular expression to match the parameter in the URL search string
+            // The 'i' flag makes it case-insensitive
+            const regex = new RegExp("[\\?&]" + name + "=([^&#]*)", "i");
+            // Execute the regex against the current URL's search part (e.g., "?name=value&other=stuff")
+            const results = regex.exec(location.search);
+            // If results are found and the value exists, decode it to handle URL-encoded characters
+            // Otherwise, return null
+            return results === null ? null : decodeURIComponent(results[1].replace(/\+/g, " "));
+        }
+
+        // Initial state for the button
+        setValidateButtonState(false);
+
+        // Event Listeners
+        showFileSizesToggle.addEventListener('change', displayFilesAndFolders);
+        downloadCsvBtn.addEventListener('click', downloadCsv);
+        validateCsvBtn.addEventListener('click', () => csvFileInput.click());
+        csvFileInput.addEventListener('change', handleCsvUpload);
+        
+        if(getUrlParameter("validate")) {
+            document.getElementById("validateCsvBtn").classList.remove("invisible");
+        }
+    </script>
+</body>
+</html>
